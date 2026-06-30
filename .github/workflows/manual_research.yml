@@ -1,0 +1,45 @@
+name: 政府公開資料 AI 研究助理 (手動執行)
+
+on:
+  workflow_dispatch:
+    # 讓您在點擊 Run workflow 時，可以輸入變數！
+    inputs:
+      keyword:
+        description: '請輸入研究主題或關鍵字 (例如: 竹產業、錏管補助)'
+        required: true
+        default: '竹產業'
+
+jobs:
+  research-task:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 檢出程式碼 (Checkout)
+      uses: actions/checkout@v3
+
+    - name: 設定 Python 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 安裝相依套件 (Install Dependencies)
+      run: |
+        python -m pip install --upgrade pip
+        # 安裝程式需要的套件
+        pip install requests pandas openpyxl pdfplumber beautifulsoup4 google-generativeai
+
+    - name: 執行研究助理程式 (Run Agent)
+      env:
+        # 將 GitHub Secrets 中的金鑰對應到環境變數
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # 將您在網頁上輸入的關鍵字對應到環境變數
+        RESEARCH_KEYWORD: ${{ github.event.inputs.keyword }}
+      run: python gov_research_agent.py
+
+    - name: 將生成的報告存回 GitHub (Commit & Push)
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add *.md
+        git commit -m "Auto-Report: 新增 ${{ github.event.inputs.keyword }} 研究報告" || exit 0
+        git push
