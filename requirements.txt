@@ -1,0 +1,6 @@
+google-genai
+pandas
+beautifulsoup4
+duckduckgo-search
+requests
+matplotlib
