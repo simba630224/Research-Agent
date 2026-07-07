@@ -9,7 +9,7 @@ import requests
 # 0. 設定您的 Gemini API Key
 # ==========================================
 # 請將您在 Google AI Studio 申請到的 Key 填入下方
-GEMINI_API_KEY = "您的_GEMINI_API_KEY_請填在此處"
+GEMINI_API_KEY = "AQ.Ab8RN6LLEpBesYepnw8gm8j1jzE4m5guOte2skDoQi6V6fan7g"
 
 # 安全地載入金鑰到環境變數中，避免舊版參數初始化衝突
 os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
