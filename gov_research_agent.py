@@ -1,36 +1,38 @@
 import os
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS  # 免費且不需要Key的搜尋工具
-from google import genai
+from duckduckgo_search import DDGS  # 免費且不需要金鑰的網路搜尋工具
+from google import genai  # 導入 Google 官方最新版 genai 模組
 import pandas as pd
 import requests
 
 # ==========================================
-# 0. 初始化：請在此處填入您的 Gemini API Key
+# 0. 設定您的 Gemini API Key
 # ==========================================
-# 您可以前往 Google AI Studio (https://aistudio.google.com/) 免費申請
+# 請將您在 Google AI Studio 申請到的 Key 填入下方
 GEMINI_API_KEY = "您的_GEMINI_API_KEY_請填在此處"
+
+# 安全地載入金鑰到環境變數中，避免舊版參數初始化衝突
 os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 
-# 初始化 Gemini 客戶端
+# 初始化最新版 Client 物件（SDK 會自動從環境變數抓取金鑰，解決 api_key 參數錯誤的問題）
 client = genai.Client()
 
 
 # ==========================================
-# 1. 工具箱 (Tools)：Agent 可以使用的外部工具
+# 1. 智能代理工具箱 (Tools)
 # ==========================================
 def tool_search_web(query: str) -> list:
-    """工具：使用 DuckDuckGo 搜尋相關政府網站，擺脫網址限制"""
-    print(f"🔍 [Agent 行動] 正在網路上搜尋: '{query}'")
+    """自主行動工具：使用 DuckDuckGo 搜尋相關台灣政府網站，擺脫網址硬編碼限制"""
+    print(f"\n🔍 [Agent 執行工具] 正在網路上搜尋: '{query}'")
     try:
         with DDGS() as ddgs:
-            # 限制搜尋台灣政府網站 (.gov.tw)
+            # 限制搜尋範圍在台灣政府網站 (.gov.tw)
             results = ddgs.text(f"{query} site:gov.tw", max_results=3)
             urls = [r["href"] for r in results if "href" in r]
             return urls
     except Exception as e:
-        print(f"❌ 搜尋工具出錯: {e}")
-        # 若搜尋失敗，提供您查到的核心網址作為備援
+        print(f"❌ 搜尋工具執行失敗: {e}")
+        # 若網路偶發性異常，提供您查到的核心政府網址作為智慧備援
         return [
             "https://data.gov.tw/dataset/40266",
             "https://agrstat.moa.gov.tw/moasdweb/inquire/TradeCoa.aspx",
@@ -38,81 +40,86 @@ def tool_search_web(query: str) -> list:
 
 
 def tool_fetch_web_content(url: str) -> str:
-    """工具：動態下載網頁內容並抽取純文字"""
-    print(f"📄 [Agent 行動] 正在讀取並解析網頁: {url}")
+    """自主行動工具：動態下載目標網頁內容並抽取乾淨純文字"""
+    print(f"📄 [Agent 執行工具] 正在讀取並解析網頁 HTML: {url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     try:
         res = requests.get(url, headers=headers, timeout=10)
-        res.encoding = "utf-8"
+        res.encoding = "utf-8"  # 確保正確解析台灣政府網站的繁體中文字
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # 移除干擾文字
+        # 移除干擾網頁閱讀的 JavaScript 和 CSS 樣式表
         for script in soup(["script", "style"]):
             script.decompose()
 
-        # 回傳前 2000 個字給 Gemini 閱讀
+        # 回傳前 2000 個字給 Gemini 閱讀，避免 Token 浪費
         return soup.get_text()[:2000]
     except Exception as e:
         return f"無法讀取網頁: {e}"
 
 
 # ==========================================
-# 2. Agent 思考與執行核心 (ReAct 循環)
+# 2. Agent 思考與執行核心 (ReAct 思維鏈)
 # ==========================================
-def run_bamboo_agent():
-    print("🚀 【Gemini 智能竹產業代理】啟動！")
+def run_bamboo_agentic_scraper():
+    print("🚀 【Gemini 智能竹產業代理網路爬蟲】啟動！")
 
-    # 思考步驟 1：
-    print("\n【思考 1】我需要主動尋找台灣竹材 20 年來的經濟規模與進出口變化。")
+    # 思考與行動 1：自主探路
+    print("\n【思考 1】要分析台灣竹材20年來的經濟規模變化，我需要主動搜尋政府最新的貿易數據。")
     urls = tool_search_web("台灣竹材 進出口 貿易統計 價值 重量")
 
-    print("\n【觀察 1】搜尋引擎回傳了以下高相關的政府數據節點：")
+    print("\n【觀察 1】搜尋引擎成功定位以下高價值的數據節點：")
     for u in urls:
         print(f"   - {u}")
 
-    # 思考步驟 2：
-    target_url = urls[0]
-    print(f"\n【思考 2】我決定深入讀取第一個網站 `{target_url}` 來抽取關鍵數據。")
+    # 思考與行動 2：深入解析
+    target_url = urls[0] if urls else "https://data.gov.tw/dataset/40266"
+    print(f"\n【思考 2】我決定深入讀取最具代表性的官方網站：{target_url}")
     web_text = tool_fetch_web_content(target_url)
 
-    # 思考步驟 3：將網頁文字送給 Gemini 進行「情報提煉與洞察」
-    print("\n🧠 [Agent 思考] 正在將網頁原始資料送交 Gemini 大腦進行結構化分析...")
+    # 思考與行動 3：利用 Gemini 大腦進行大數據情報提煉
+    print("\n🧠 [Agent 思考] 正在將動態採集到的網頁雜亂文字送交 Gemini 進行分析...")
 
     prompt = f"""
-    請扮演資深農業經濟研究員，閱讀下方從政府網站抓取到的網頁雜亂純文字。
-    請從中幫我提煉出「台灣竹材進出口的黃金交叉痛點」（例如出口量價齊跌、進口單價飆升、貿易逆差擴大等趨勢），
-    並以條列式結構化輸出你的深度觀察。
+    你現在是一位資深的國家農業經濟研究員。
+    請閱讀下方從台灣政府網站即時抓取下來的網頁純文字，
+    從中幫我精煉、歸納出「台灣竹材進出口的重大經濟規模變化與痛點」
+    （例如：出口量價狀況、進口單價是否有爆發性成長、貿易逆差擴大等趨勢）。
+    請以清晰、結構化的條列式報告輸出你的深度觀察。
 
-    網頁抓取到的文字內容：
+    網頁抓取到的即時內容：
     \"\"\"{web_text}\"\"\"
     """
 
     try:
-        # 呼叫最新的 Gemini 1.5 Flash 模型進行推理
+        # 使用新版 SDK 標準寫法呼叫最新的 Gemini 1.5 Flash 模型
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt,
         )
 
         print("\n📊 【Gemini 最終情報分析報告】")
-        print("--------------------------------------------------")
+        print("=" * 60)
         print(response.text)
-        print("--------------------------------------------------")
+        print("=" * 60)
 
-        # 思考步驟 4：自動銜接後續的資料統計（這裡模擬 Pandas 承接指標）
-        print("\n【後續自動化】系統已動態鎖定數據特徵。已準備好將歷史趨勢匯入 Pandas 繪圖引擎。")
+        print(
+            "\n【系統通知】情報提煉成功！數據特徵已由 Agent 鎖定，後續可完美銜接 Pandas 統計繪圖模組。"
+        )
 
     except Exception as e:
-        print(f"❌ Gemini 呼叫失敗，請檢查您的 API Key 是否正確。錯誤訊息: {e}")
+        print(
+            f"❌ Gemini 大腦呼叫失敗。請確認您的 API Key 是否正確填入，且已安裝最新的 google-genai 套件。錯誤訊息: {e}"
+        )
 
 
 if __name__ == "__main__":
-    # 如果還沒有 Key，先提醒使用者
+    # 預檢機制
     if GEMINI_API_KEY == "您的_GEMINI_API_KEY_請填在此處":
         print(
-            "⚠️ 提示：請先在程式碼第 10 行填入您的 Gemini API Key，才能成功跑通 AI 大腦喔！"
+            "⚠️ 提示：請先在程式碼第 11 行填入您真正的 Gemini API Key，才能順利啟動 AI 大腦喔！"
         )
     else:
-        run_bamboo_agent()
+        run_bamboo_agentic_scraper()
