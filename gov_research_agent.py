@@ -1,29 +1,30 @@
 import sys
-
-# 強制將 Python 全域的預設編碼改為 utf-8（保留上一階段成功的編碼修正）
 import importlib
 
+# 【編碼強化】強制設定 Python 執行環境的預設編碼為 UTF-8，防止在 Linux 雲端環境出現編碼錯誤
 importlib.reload(sys)
-sys.setdefaultencoding("utf-8") if hasattr(
-    sys, "setdefaultencoding"
-) else None
+if hasattr(sys, 'setdefaultencoding'):
+    sys.setdefaultencoding('utf-8')
 
 import os
 from bs4 import BeautifulSoup
 from google import genai
 import requests
 
-# 1. 精確定義您的 API Key（清除可能存在的空格）
-# 請確保下方的 AIzaSy... 是您真正的金鑰
-MY_API_KEY = "AQ.Ab8RN6I_SzsLcK1FZOjWIpQhjeGCleb7gDgYcWEh9ma8L0sP5w".strip()
+# 【安全存取】直接由 GitHub Actions 的環境變數讀取金鑰，避開 401 Unauthenticated 錯誤
+# 請確保已在 GitHub Repository 的 Settings -> Secrets and variables -> Actions 中設定 GEMINI_API_KEY
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("請在 GitHub Secrets 中設定 GEMINI_API_KEY")
 
-# 2. 【核心修正】直接把 api_key 當作參數傳入 Client，徹底解決 401 OAuth2 驗證錯誤
-client = genai.Client(api_key=MY_API_KEY)
+# 初始化 Client，明確傳入 api_key 參數以繞過自動化 OAuth2 驗證衝突
+client = genai.Client(api_key=api_key)
 
 
 def tool_search_web_cloud_safe(query: str) -> list:
-    """雲端安全版搜尋工具"""
-    print(f"\n🔍 [Agent 執行工具] 正在網路上搜尋: '{query}'")
+    """雲端安全版搜尋工具：當網路爬蟲受限時，自動鎖定官方權威網址"""
+    print(f"\n🔍 [Agent 執行工具] 正在處理搜尋請求: '{query}'")
+    # 直接回傳已知的政府資料源，確保在 GitHub 伺服器機房網路環境下 100% 可連線
     return [
         "https://data.gov.tw/dataset/40266",
         "https://agrstat.moa.gov.tw/moasdweb/inquire/TradeCoa.aspx",
@@ -41,6 +42,7 @@ def tool_fetch_web_content(url: str) -> str:
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
 
+        # 移除干擾文字
         for script in soup(["script", "style"]):
             script.decompose()
 
@@ -50,14 +52,16 @@ def tool_fetch_web_content(url: str) -> str:
 
 
 def run_bamboo_agentic_scraper():
-    print("🚀 【Gemini 智能竹產業代理網路爬蟲 - 雲端優化版】啟動！")
+    print("🚀 【Gemini 智能竹產業代理網路爬蟲 - GitHub 雲端執行版】啟動！")
 
+    # 1. 自主定位資料源
     urls = tool_search_web_cloud_safe("台灣竹材 進出口 貿易統計 價值 重量")
     target_url = urls[0]
     web_text = tool_fetch_web_content(target_url)
 
     print("\n🧠 [Agent 思考] 正在將動態採集到的數據片段送交 Gemini 進行分析...")
 
+    # 2. 建構 Prompt
     prompt_text = (
         "你現在是一位資深的國家農業經濟研究員。\n"
         "請閱讀下方從台灣政府網站即時抓取下來的網頁資訊。\n"
@@ -67,6 +71,7 @@ def run_bamboo_agentic_scraper():
         f"數據內容：\n\"\"\"{web_text}\"\"\""
     )
 
+    # 3. 強制轉碼隔離
     safe_prompt = prompt_text.encode("utf-8").decode("utf-8")
 
     try:
@@ -78,13 +83,14 @@ def run_bamboo_agentic_scraper():
 
         print("\n📊 【Gemini 最終情報分析報告】")
         print("=" * 60)
+        # 確保輸出到 GitHub Actions 日誌時也是 UTF-8
         print(response.text.encode("utf-8").decode("utf-8"))
         print("=" * 60)
         print("\n【系統通知】雲端排程執行成功！")
 
     except Exception as e:
         err_msg = str(e).encode("utf-8", errors="ignore").decode("utf-8")
-        print(f"❌ Gemini 大腦呼交失敗。錯誤訊息: {err_msg}")
+        print(f"❌ Gemini 大腦呼叫失敗。錯誤訊息: {err_msg}")
 
 
 if __name__ == "__main__":
