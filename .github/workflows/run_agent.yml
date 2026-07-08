@@ -4,6 +4,11 @@ name: Run Bamboo Scraper on GitHub
 on:
   workflow_dispatch:
 
+# 強制要求 GitHub 雲端虛擬機使用 UTF-8 編碼，解決 ascii 報錯問題
+env:
+  LANG: "C.UTF-8"
+  LC_ALL: "C.UTF-8"
+
 jobs:
   run-agent:
     runs-on: ubuntu-latest
