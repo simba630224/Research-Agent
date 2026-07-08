@@ -14,7 +14,7 @@ from google import genai
 import requests
 
 # 1. 確保金鑰完全是乾淨的字串，清除所有可能的隱形空格
-GEMINI_API_KEY = "您的真正AIzaSy金鑰字串放這裡".strip()
+GEMINI_API_KEY = "AQ.Ab8RN6I_SzsLcK1FZOjWIpQhjeGCleb7gDgYcWEh9ma8L0sP5w".strip()
 os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 
 # 2. 初始化 Client
