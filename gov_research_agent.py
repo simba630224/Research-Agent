@@ -1,13 +1,21 @@
+import sys
+
+# 【核心修正 1】在程式最開頭，強制將 Python 全域的預設編碼改為 utf-8
+import importlib
+
+importlib.reload(sys)
+sys.setdefaultencoding("utf-8") if hasattr(
+    sys, "setdefaultencoding"
+) else None
+
 import os
 from bs4 import BeautifulSoup
 from google import genai
 import requests
 
-# 1. 確保金鑰完全是乾淨的字串，不要包含任何中文字或空格
-# 請把下方的 AIzaSy... 替換成您真正的金鑰本身即可
-GEMINI_API_KEY = "您的真正AIzaSy金鑰字串放這裡"
-
-os.environ["GEMINI_API_KEY"] = str(GEMINI_API_KEY).strip()
+# 1. 確保金鑰完全是乾淨的字串，清除所有可能的隱形空格
+GEMINI_API_KEY = "您的真正AIzaSy金鑰字串放這裡".strip()
+os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 
 # 2. 初始化 Client
 client = genai.Client()
@@ -50,30 +58,37 @@ def run_bamboo_agentic_scraper():
 
     print("\n🧠 [Agent 思考] 正在將動態採集到的數據片段送交 Gemini 進行分析...")
 
-    prompt = """
-    你現在是一位資深的國家農業經濟研究員。
-    請閱讀下方從台灣政府網站即時抓取下來的網頁資訊。
-    請從中幫我精煉、歸納出：「台灣竹材經濟規模20年來的變化趨勢與痛點」
-    （特別關注：出口量價狀況、進口單價是否有暴漲、貿易逆差是否急遽擴大等趨勢）。
-    請以清晰、結構化的條列式繁體中文報告輸出你的深度觀察。
+    # 【核心修正 2】將所有 Prompt 中文字串明確宣告為 UTF-8 編碼
+    prompt_text = (
+        "你現在是一位資深的國家農業經濟研究員。\n"
+        "請閱讀下方從台灣政府網站即時抓取下來的網頁資訊。\n"
+        "請從中幫我精煉、歸納出：「台灣竹材經濟規模20年來的變化趨勢與痛點」\n"
+        "（特別關注：出口量價狀況、進口單價是否有暴漲、貿易逆差是否急遽擴大等趨勢）。\n"
+        "請以清晰、結構化的條列式繁體中文報告輸出你的深度觀察。\n\n"
+        f"數據內容：\n\"\"\"{web_text}\"\"\""
+    )
 
-    數據內容：
-    """ + f"\n\"\"\"{web_text}\"\"\""
+    # 強制將字串進行 utf-8 編碼與解碼，確保傳入 SDK 時絕對不帶有 ascii 特徵
+    safe_prompt = prompt_text.encode("utf-8").decode("utf-8")
 
     try:
+        # 使用新版 SDK 標準寫法呼叫最新的 Gemini 1.5 Flash 模型
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=prompt,
+            contents=safe_prompt,
         )
 
         print("\n📊 【Gemini 最終情報分析報告】")
         print("=" * 60)
-        print(response.text)
+        # 確保輸出到 GitHub 日誌時也是 UTF-8
+        print(response.text.encode("utf-8").decode("utf-8"))
         print("=" * 60)
         print("\n【系統通知】雲端排程執行成功！")
 
     except Exception as e:
-        print(f"❌ Gemini 大腦呼叫失敗。錯誤訊息: {e}")
+        # 捕捉底層錯誤並強制轉碼輸出
+        err_msg = str(e).encode("utf-8", errors="ignore").decode("utf-8")
+        print(f"❌ Gemini 大腦呼交失敗。錯誤訊息: {err_msg}")
 
 
 if __name__ == "__main__":
