@@ -1,6 +1,6 @@
 import sys
 
-# 【核心修正 1】在程式最開頭，強制將 Python 全域的預設編碼改為 utf-8
+# 強制將 Python 全域的預設編碼改為 utf-8（保留上一階段成功的編碼修正）
 import importlib
 
 importlib.reload(sys)
@@ -13,12 +13,12 @@ from bs4 import BeautifulSoup
 from google import genai
 import requests
 
-# 1. 確保金鑰完全是乾淨的字串，清除所有可能的隱形空格
-GEMINI_API_KEY = "AQ.Ab8RN6I_SzsLcK1FZOjWIpQhjeGCleb7gDgYcWEh9ma8L0sP5w".strip()
-os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+# 1. 精確定義您的 API Key（清除可能存在的空格）
+# 請確保下方的 AIzaSy... 是您真正的金鑰
+MY_API_KEY = "AQ.Ab8RN6I_SzsLcK1FZOjWIpQhjeGCleb7gDgYcWEh9ma8L0sP5w".strip()
 
-# 2. 初始化 Client
-client = genai.Client()
+# 2. 【核心修正】直接把 api_key 當作參數傳入 Client，徹底解決 401 OAuth2 驗證錯誤
+client = genai.Client(api_key=MY_API_KEY)
 
 
 def tool_search_web_cloud_safe(query: str) -> list:
@@ -50,7 +50,7 @@ def tool_fetch_web_content(url: str) -> str:
 
 
 def run_bamboo_agentic_scraper():
-    print("🚀 【Gemini 智能竹產業代理網路爬蟲 - 雲端版】啟動！")
+    print("🚀 【Gemini 智能竹產業代理網路爬蟲 - 雲端優化版】啟動！")
 
     urls = tool_search_web_cloud_safe("台灣竹材 進出口 貿易統計 價值 重量")
     target_url = urls[0]
@@ -58,7 +58,6 @@ def run_bamboo_agentic_scraper():
 
     print("\n🧠 [Agent 思考] 正在將動態採集到的數據片段送交 Gemini 進行分析...")
 
-    # 【核心修正 2】將所有 Prompt 中文字串明確宣告為 UTF-8 編碼
     prompt_text = (
         "你現在是一位資深的國家農業經濟研究員。\n"
         "請閱讀下方從台灣政府網站即時抓取下來的網頁資訊。\n"
@@ -68,11 +67,10 @@ def run_bamboo_agentic_scraper():
         f"數據內容：\n\"\"\"{web_text}\"\"\""
     )
 
-    # 強制將字串進行 utf-8 編碼與解碼，確保傳入 SDK 時絕對不帶有 ascii 特徵
     safe_prompt = prompt_text.encode("utf-8").decode("utf-8")
 
     try:
-        # 使用新版 SDK 標準寫法呼叫最新的 Gemini 1.5 Flash 模型
+        # 呼叫 Gemini 1.5 Flash 模型
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=safe_prompt,
@@ -80,13 +78,11 @@ def run_bamboo_agentic_scraper():
 
         print("\n📊 【Gemini 最終情報分析報告】")
         print("=" * 60)
-        # 確保輸出到 GitHub 日誌時也是 UTF-8
         print(response.text.encode("utf-8").decode("utf-8"))
         print("=" * 60)
         print("\n【系統通知】雲端排程執行成功！")
 
     except Exception as e:
-        # 捕捉底層錯誤並強制轉碼輸出
         err_msg = str(e).encode("utf-8", errors="ignore").decode("utf-8")
         print(f"❌ Gemini 大腦呼交失敗。錯誤訊息: {err_msg}")
 
