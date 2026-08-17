@@ -24,7 +24,7 @@ TW_TOP_N = 20
 US_TOP_N = 10
 HEADERS = [
     "執行日期", "市場", "排名", "代號", "公司", "收盤價", "日變動%",
-    "MA20", "MA50", "MACD", "創20日新高", "創50日新高", "創20日新低", "創50日新低",
+    "MA20", "MA50", "MACD", "20／50日新高低",
     "技術訊號", "判斷依據", "公開研究／新聞", "來源連結", "50字摘要",
 ]
 
@@ -110,6 +110,19 @@ def signal(d: dict[str, Any]) -> tuple[str, str]:
     return "盤整", "未同時符合偏多或偏空／過熱條件"
 
 
+def high_low_status(d: dict[str, Any]) -> str:
+    labels = []
+    if d["new_high_20"]:
+        labels.append("創20日新高")
+    if d["new_high_50"]:
+        labels.append("創50日新高")
+    if d["new_low_20"]:
+        labels.append("創20日新低")
+    if d["new_low_50"]:
+        labels.append("創50日新低")
+    return "；".join(labels) or "—"
+
+
 def research_news(company: str, symbol: str) -> tuple[str, str]:
     query = f'"{company}" {symbol} (analyst OR research OR earnings)'
     url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
@@ -164,13 +177,13 @@ def make_rows(market: str, top: list[dict[str, Any]]) -> list[list[str]]:
             technical, basis = signal(d)
             news, link = research_news(company, symbol)
             summary = ai_summary(company, d, technical, news)
-            rows.append([report_date, market, rank, symbol, company, fmt(d["close"]), fmt(d["change"]), fmt(d["ma20"]), fmt(d["ma50"]), fmt(d["macd"]), "是" if d["new_high_20"] else "否", "是" if d["new_high_50"] else "否", "是" if d["new_low_20"] else "否", "是" if d["new_low_50"] else "否", technical, basis, news, link, summary])
+            rows.append([report_date, market, rank, symbol, company, fmt(d["close"]), fmt(d["change"]), fmt(d["ma20"]), fmt(d["ma50"]), fmt(d["macd"]), high_low_status(d), technical, basis, news, link, summary])
         except Exception as exc:
             # Write a visible row instead of silently producing an empty report.
             # This makes Yahoo outages debuggable from the sheet and keeps the
             # scheduled job alive for subsequent days.
             logging.exception("Unable to build %s", symbol)
-            rows.append([report_date, market, rank, symbol, company, "", "", "", "", "", "", "", "", "", "資料取得失敗", "市場資料暫時無法取得", "", "", "市場資料暫時無法取得。"])
+            rows.append([report_date, market, rank, symbol, company, "", "", "", "", "", "", "資料取得失敗", "市場資料暫時無法取得", "", "", "市場資料暫時無法取得。"])
     return rows
 
 
