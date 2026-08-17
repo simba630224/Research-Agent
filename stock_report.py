@@ -24,8 +24,8 @@ TW_TOP_N = 20
 US_TOP_N = 10
 HEADERS = [
     "執行日期", "市場", "排名", "代號", "公司", "收盤價", "日變動%",
-    "MA20", "MA50", "MACD", "技術訊號", "判斷依據", "公開研究／新聞", "來源連結",
-    "50字摘要", "規則式資訊參考",
+    "MA20", "MA50", "MACD", "創20日新高", "創50日新高", "創20日新低", "創50日新低",
+    "技術訊號", "判斷依據", "公開研究／新聞", "來源連結", "50字摘要",
 ]
 
 # These are a configurable, high-market-cap Taiwan candidate universe, not a claim of an
@@ -85,18 +85,29 @@ def indicators(symbol: str) -> dict[str, Any]:
     macd = num(macd_series.iloc[-1])
     last, prev = num(close.iloc[-1]), num(close.iloc[-2])
     change = ((last / prev) - 1) * 100 if last and prev else None
-    return {"close": last, "change": change, "rsi": rsi, "ma20": ma20, "ma50": ma50, "macd": macd}
+    # Compare today's close with the preceding trading days only. A tied high or
+    # low is not labelled as a new breakout.
+    prior_close = close.shift(1)
+    high20, high50 = num(prior_close.rolling(20).max().iloc[-1]), num(prior_close.rolling(50).max().iloc[-1])
+    low20, low50 = num(prior_close.rolling(20).min().iloc[-1]), num(prior_close.rolling(50).min().iloc[-1])
+    return {
+        "close": last, "change": change, "rsi": rsi, "ma20": ma20, "ma50": ma50, "macd": macd,
+        "new_high_20": bool(last is not None and high20 is not None and last > high20),
+        "new_high_50": bool(last is not None and high50 is not None and last > high50),
+        "new_low_20": bool(last is not None and low20 is not None and last < low20),
+        "new_low_50": bool(last is not None and low50 is not None and last < low50),
+    }
 
 
-def signal(d: dict[str, Any]) -> tuple[str, str, str]:
+def signal(d: dict[str, Any]) -> tuple[str, str]:
     bullish = bool(d["close"] and d["ma20"] and d["ma50"] and d["close"] > d["ma20"] > d["ma50"] and d["macd"] and d["macd"] > 0)
     bearish = bool(d["close"] and d["ma20"] and d["ma50"] and d["close"] < d["ma20"] < d["ma50"] and d["macd"] and d["macd"] < 0)
     if bullish and d["rsi"] is not None and d["rsi"] < 70:
-        return "偏多", "收盤價＞MA20＞MA50、MACD＞0、RSI＜70", "關注：趨勢偏多且未過熱；仍應設停損並查證基本面。"
+        return "偏多", "收盤價＞MA20＞MA50、MACD＞0、RSI＜70"
     if bearish or (d["rsi"] is not None and d["rsi"] > 75):
         basis = "收盤價＜MA20＜MA50、MACD＜0" if bearish else "RSI＞75（可能過熱）"
-        return "偏空／過熱", basis, "保守：趨勢偏弱或可能過熱，宜降低追價並等待確認。"
-    return "盤整", "未同時符合偏多或偏空／過熱條件", "觀望：訊號未一致，待趨勢與基本面資訊更明朗。"
+        return "偏空／過熱", basis
+    return "盤整", "未同時符合偏多或偏空／過熱條件"
 
 
 def research_news(company: str, symbol: str) -> tuple[str, str]:
@@ -150,16 +161,16 @@ def make_rows(market: str, top: list[dict[str, Any]]) -> list[list[str]]:
             except Exception as exc:
                 logging.warning("Name lookup failed for %s: %s", symbol, exc)
             d = indicators(symbol)
-            technical, basis, guidance = signal(d)
+            technical, basis = signal(d)
             news, link = research_news(company, symbol)
             summary = ai_summary(company, d, technical, news)
-            rows.append([report_date, market, rank, symbol, company, fmt(d["close"]), fmt(d["change"]), fmt(d["ma20"]), fmt(d["ma50"]), fmt(d["macd"]), technical, basis, news, link, summary, guidance])
+            rows.append([report_date, market, rank, symbol, company, fmt(d["close"]), fmt(d["change"]), fmt(d["ma20"]), fmt(d["ma50"]), fmt(d["macd"]), "是" if d["new_high_20"] else "否", "是" if d["new_high_50"] else "否", "是" if d["new_low_20"] else "否", "是" if d["new_low_50"] else "否", technical, basis, news, link, summary])
         except Exception as exc:
             # Write a visible row instead of silently producing an empty report.
             # This makes Yahoo outages debuggable from the sheet and keeps the
             # scheduled job alive for subsequent days.
             logging.exception("Unable to build %s", symbol)
-            rows.append([report_date, market, rank, symbol, company, "", "", "", "", "", "資料取得失敗", "市場資料暫時無法取得", "", "", "市場資料暫時無法取得。", "觀望：請待市場資料恢復後再判讀。"])
+            rows.append([report_date, market, rank, symbol, company, "", "", "", "", "", "", "", "", "", "資料取得失敗", "市場資料暫時無法取得", "", "", "市場資料暫時無法取得。"])
     return rows
 
 
