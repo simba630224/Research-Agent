@@ -48,7 +48,9 @@ def fmt(value: float | None, digits: int = 2) -> str:
 
 
 def ticker_list(env_name: str, fallback: str) -> list[str]:
-    raw = os.getenv(env_name, fallback)
+    # GitHub expands an unset Secret to an empty string. Treat that exactly like
+    # an unset variable so the built-in candidate list is still used.
+    raw = os.getenv(env_name) or fallback
     return list(dict.fromkeys(x.strip().upper() for x in raw.split(",") if x.strip()))
 
 
@@ -57,13 +59,18 @@ def fetch_top_by_market_cap(tickers: list[str]) -> list[dict[str, Any]]:
     for symbol in tickers:
         try:
             info = yf.Ticker(symbol).get_fast_info()
-            market_cap = num(info.get("market_cap"))
-            if not market_cap:
-                continue
-            rows.append({"symbol": symbol, "market_cap": market_cap})
+            # Yahoo sometimes omits this field on GitHub-hosted runners. Keep a
+            # candidate with a zero sort value rather than dropping every stock.
+            market_cap = num(info.get("market_cap") or info.get("marketCap"))
+            rows.append({"symbol": symbol, "market_cap": market_cap or 0})
         except Exception as exc:  # one unavailable ticker should not fail daily update
-            logging.warning("Skipping %s: %s", symbol, exc)
-    return sorted(rows, key=lambda r: r["market_cap"], reverse=True)[:TOP_N]
+            logging.warning("Market-cap lookup failed for %s: %s", symbol, exc)
+            rows.append({"symbol": symbol, "market_cap": 0})
+    ranked = sorted(rows, key=lambda r: r["market_cap"], reverse=True)[:TOP_N]
+    if ranked and not any(r["market_cap"] for r in ranked):
+        logging.warning("Yahoo returned no market caps; using the configured candidate order for this run")
+    logging.info("Selected %d of %d candidates", len(ranked), len(tickers))
+    return ranked
 
 
 def indicators(symbol: str) -> dict[str, Any]:
@@ -133,17 +140,27 @@ def make_rows(market: str, top: list[dict[str, Any]]) -> list[list[str]]:
     rows: list[list[str]] = []
     for rank, item in enumerate(top, start=1):
         symbol = item["symbol"]
+        company = symbol
         try:
             ticker = yf.Ticker(symbol)
-            metadata = ticker.get_info()
-            company = metadata.get("shortName") or symbol
+            # QuoteSummary (get_info) is occasionally rate-limited by Yahoo.
+            # A missing company name must not discard an otherwise valid report.
+            try:
+                metadata = ticker.get_info()
+                company = metadata.get("shortName") or symbol
+            except Exception as exc:
+                logging.warning("Name lookup failed for %s: %s", symbol, exc)
             d = indicators(symbol)
             technical, guidance = signal(d)
             news, link = research_news(company, symbol)
             summary = ai_summary(company, d, technical, news)
             rows.append([report_date, market, rank, symbol, company, round(item["market_cap"], 0), fmt(d["close"]), fmt(d["change"]), fmt(d["rsi"]), fmt(d["ma20"]), fmt(d["ma50"]), fmt(d["macd"]), technical, news, link, summary, guidance, DISCLAIMER])
         except Exception as exc:
-            logging.warning("Unable to build %s: %s", symbol, exc)
+            # Write a visible row instead of silently producing an empty report.
+            # This makes Yahoo outages debuggable from the sheet and keeps the
+            # scheduled job alive for subsequent days.
+            logging.exception("Unable to build %s", symbol)
+            rows.append([report_date, market, rank, symbol, company, round(item["market_cap"], 0), "", "", "", "", "", "", "資料取得失敗", "", "", f"{company}：市場資料暫時無法取得。"[:50], "觀望：請待市場資料恢復後再判讀。", DISCLAIMER])
     return rows
 
 
